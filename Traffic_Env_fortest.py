@@ -1,7 +1,7 @@
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # ++++++++++++++++++++++SUMO Environment Interface++++++++++++++++++++++ #
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
-import cityflow
+
 from sys import platform
 import sys
 import os
@@ -99,7 +99,6 @@ class Traffic_Env(object):
         self.state_dim = state_dim
         self.num_agent = num_agent
 
-        self.CityFlow = cityflow.Engine(config_path, thread_num=1)
     def step(self, action_list):
         pass
         return False
