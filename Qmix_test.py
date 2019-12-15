@@ -11,6 +11,9 @@ from Traffic_Env import Traffic_Env
 import os
 import random
 import copy
+from tkinter import _flatten
+import scipy.io as scio
+import time
 
 class DNNAgent(nn.Module):
     def __init__(self, input_shape, n_actions):
@@ -97,7 +100,7 @@ class QMixer(nn.Module):
         # Compute final output
         y = th.bmm(hidden, w_final) + v
         # Reshape and return
-        q_tot = y.view(bs, -1, 1)  # output total Q value
+        q_tot = y.view(bs, 1)  # output total Q value
         return q_tot
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -180,6 +183,11 @@ def update_qmix(train_batch, update_tar=False):
             target_param.data.copy_(param.data)
 
 
+def log_record(log_str, log_file):
+    f_log = open(log_file, "a")
+    f_log.write(log_str)
+    f_log.close()
+
 if __name__ == '__main__':
     SEED = 32013
     random.seed(SEED)
@@ -198,31 +206,35 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = "1"  # 使用 GPU 0
 
     total_epi = 1  # set episode number
-    step_p_epi = 1000  # set step number per episode
+    step_p_epi = 100  # set step number per episode
     replay_buffer_size = 5000  # replay buffer size
     train_start_buffer = 50  # start training threshold
     target_interval = 10
-    epsilon = 0.95  # epsilon parameter for selection policy
+    start_epsilon = 0.05
+    end_epsilon = 0.95  # epsilon parameter for selection policy
     gamma = 0.9
     learning_rate = 0.001
     batch_size = 32  # batch size for training
-    obs_dim = 4  # observation dimension of each agent
+    obs_dim = 5  # observation dimension of each agent
     action_dim = 2  # action dimension of each agent
     mixing_embed_dim = 32
-    state_dim = 4*n_agents  # shape of state
+    state_dim = 5*n_agents  # shape of state
 
 
 
     print("Episode Num: %d\r\n Step_Num per epi: %d \r\n buffer size: %d\r\n epsilon: %f\r\n" %
-          (total_epi, step_p_epi, replay_buffer_size, epsilon))
+          (total_epi, step_p_epi, replay_buffer_size, end_epsilon))
 
     # initialize the replay buffer
+    print("initialize the replay buffer")
     replay_buffer = ReplayBuffer(replay_buffer_size)
 
     # initialize the network in cloud
+    print("initialize the network in cloud")
     qmixer = QMixer(n_agents, state_dim, mixing_embed_dim, obs_dim, action_dim).to(device)
 
     # initialize the target network in cloud
+    print("initialize the target network in cloud")
     target_qmixer = QMixer(n_agents, state_dim, mixing_embed_dim, obs_dim, action_dim, greedy=True).to(device)
     for target_param, param in zip(target_qmixer.parameters(), qmixer.parameters()):
         target_param.data.copy_(param.data)
@@ -231,23 +243,40 @@ if __name__ == '__main__':
     q_optimizer = Adam(qmixer.parameters(), lr=learning_rate)  # need to check the parameters, do they include all para.
     Loss_Func = nn.MSELoss()
     # initialize the DNN network in fog node
+    print("initialize the DNN network in fog node")
     for i in range(n_agents):
         exec('Fog_Agents_' + str(Agent_id_list[i]) + '=copy.deepcopy(qmixer.Agents_' + str(Agent_id_list[i]) + ')')  # Agent Net in fog node, copy the network from cloud
 
 
+    record_path = "/record/test/"
+    folder_for_this_exp ="max_episodes{0}_max_steps{1}_gamma{2}_time{3}_seed{4}".format(str(total_epi), str(step_p_epi), str(gamma),time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time())),str(SEED))
+    current_exp_path = os.path.join(record_path, folder_for_this_exp)
+    model_path = os.path.join(current_exp_path, "model")
+    traffic_data_path = os.path.join(current_exp_path, "traffic_data")
+    episode_store_path = os.path.join(current_exp_path, "log_reward.txt")
+    step_store_path = os.path.join(current_exp_path, "log_step.txt")
+    print(os.path.exists(model_path))
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    if not os.path.exists(traffic_data_path):
+        os.makedirs(traffic_data_path)
+
     print("Start Experiment")
+    rewards = []
     for episode in range(total_epi):
         episode_reward = 0
         pre_update_step = 0
         update_tar_flag = False
         # create traffic environment
-        Env = Traffic_Env(obs_dim, action_dim, state_dim, n_agents)
+        Env = Traffic_Env(obs_dim, action_dim, state_dim, Agent_id_list)
         # reset traffic environment
         Env.reset()
         # get state of whole environment
         env_state = Env.get_state()
+        # get observation of whole environment
         env_obs = Env.get_obs()  # observation of whole environment
         for step in range(step_p_epi):
+            epsilon = start_epsilon + ((episode*step_p_epi+step)/(total_epi*step_p_epi))*(end_epsilon-start_epsilon)
             # +++++++++++++++++++++++Done in fog node++++++++++++++++++++++ #
             action_list = []  # list of storing action for each agent
             for agent_idx in range(n_agents):
@@ -257,15 +286,18 @@ if __name__ == '__main__':
                 exec('agent_q_value = Fog_Agents_' + str(Agent_id_list[agent_idx]) + '.forward(th.FloatTensor(agent_obs).unsqueeze(0).to(device)).detach().cpu().numpy()[0]')
                 sel_act = select_action(agent_q_value, epsilon, test_mode=test_flag)
                 action_list.append(sel_act.tolist())
+            action_list = list(_flatten(action_list))
             # ++++++++++++execution in fog node, receive++++++++++++++++++++++ #
             # decentralized execution of traffic system, receive reward
             done = Env.step(action_list)  # step execution in traffic environment
             env_next_state = Env.get_state()  # get new state after taking new action
             env_next_obs = Env.get_obs()  # get new observation after taking new action
-            env_reward = Env.get_reward(env_state)  # get reward
-
-            print("Episode", episode, "Step", step, "Action", action_list, "Reward", env_reward)
-            replay_buffer.push(env_state, env_obs, np.array(action_list).squeeze(1), env_reward, env_next_state, env_next_obs)
+            env_reward = Env.get_reward()  # get reward
+            # print("Episode: %d, Step: %d, epsilon: %.3f, Action: %d, Reward: %.3f, " %(episode, step, epsilon, action_list, env_reward))
+            step_str = "Episode:{:}, Step:{:}, epsilon:{:.3}, Action:{:}, Reward:{:.4}".format(episode, step, epsilon, action_list, env_reward) + '\r\n'
+            print(step_str)
+            log_record(step_str, step_store_path)
+            replay_buffer.push(env_state, env_obs, np.array(action_list), env_reward, env_next_state, env_next_obs)
 
             if (test_flag is False) and (len(replay_buffer) > train_start_buffer):
                 transition_batch = replay_buffer.sample(batch_size)
@@ -282,7 +314,16 @@ if __name__ == '__main__':
             env_state = env_next_state
             env_obs = env_next_obs
             episode_reward += env_reward
-        for i in qmixer.state_dict():
-            print(i)
+            rewards.append(env_reward)
+
+        reward_str = "episode:{0}, episode_reward:{1}" \
+                         .format(episode, episode_reward) + '\r\n'
+        log_record(reward_str, episode_store_path)
+        if episode % 10 == 0:
+            th.save(qmixer.state_dict(),
+                       os.path.join(model_path, 'qmixer_net' + str(episode) + '.pth'))
+    scio.savemat(os.path.join(current_exp_path, 'epi_data_list.mat'),{'reward_list': rewards})
+        # for i in qmixer.state_dict():
+        #     print(i)
         # for i in qmixer.named_parameters():
         #     print(i)
