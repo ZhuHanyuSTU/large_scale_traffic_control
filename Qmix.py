@@ -14,6 +14,8 @@ import copy
 from tkinter import _flatten
 import scipy.io as scio
 import time
+import shutil
+
 
 class DNNAgent(nn.Module):
     def __init__(self, input_shape, n_actions):
@@ -220,7 +222,24 @@ if __name__ == '__main__':
     mixing_embed_dim = 32
     state_dim = 5*n_agents  # shape of state
 
+    record_path = "record/test/"
+    folder_for_this_exp ="max_episodes{0}_max_steps{1}_gamma{2}_time{3}_seed{4}".format(str(total_epi), str(step_p_epi), str(gamma),time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time())),str(SEED))
+    current_exp_path = os.path.join(record_path, folder_for_this_exp)
+    model_path = os.path.join(current_exp_path, "model")
+    traffic_data_path = os.path.join(current_exp_path, "traffic_data")
+    episode_store_path = os.path.join(current_exp_path, "log_reward.txt")
+    step_store_path = os.path.join(current_exp_path, "log_step.txt")
 
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    if not os.path.exists(traffic_data_path):
+        os.makedirs(traffic_data_path)
+    shutil.copy(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Qmix.py'),
+        os.path.join(current_exp_path, 'Qmix_back.py'))
+    shutil.copy(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), 'Traffic_Env.py'),
+        os.path.join(current_exp_path, 'Traffic_Env_back.py'))
 
     print("Episode Num: %d\r\n Step_Num per epi: %d \r\n buffer size: %d\r\n epsilon: %f\r\n" %
           (total_epi, step_p_epi, replay_buffer_size, end_epsilon))
@@ -246,20 +265,6 @@ if __name__ == '__main__':
     print("initialize the DNN network in fog node")
     for i in range(n_agents):
         exec('Fog_Agents_' + str(Agent_id_list[i]) + '=copy.deepcopy(qmixer.Agents_' + str(Agent_id_list[i]) + ')')  # Agent Net in fog node, copy the network from cloud
-
-
-    record_path = "record/test/"
-    folder_for_this_exp ="max_episodes{0}_max_steps{1}_gamma{2}_time{3}_seed{4}".format(str(total_epi), str(step_p_epi), str(gamma),time.strftime('%m_%d_%H_%M_%S', time.localtime(time.time())),str(SEED))
-    current_exp_path = os.path.join(record_path, folder_for_this_exp)
-    model_path = os.path.join(current_exp_path, "model")
-    traffic_data_path = os.path.join(current_exp_path, "traffic_data")
-    episode_store_path = os.path.join(current_exp_path, "log_reward.txt")
-    step_store_path = os.path.join(current_exp_path, "log_step.txt")
-    print(model_path)
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
-    if not os.path.exists(traffic_data_path):
-        os.makedirs(traffic_data_path)
 
     print("Start Experiment")
     rewards = []
