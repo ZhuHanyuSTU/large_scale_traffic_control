@@ -17,6 +17,9 @@ import time
 import shutil
 
 
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+# ++++++++++++++++++++++++++DNN network definition++++++++++++++++++++++ #
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 class DNNAgent(nn.Module):
     def __init__(self, input_shape, n_actions):
         super(DNNAgent, self).__init__()
