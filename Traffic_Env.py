@@ -80,9 +80,8 @@ else:
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 carWidth = 3
-grid_width = 4
-area_length = 1000
-
+current_folder = os.getcwd()
+config_file = os.path.join(current_folder, "setting/config.json")
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 # ++++++++++++++++++++++++Function Construct++++++++++++++++++++++++++++ #
@@ -99,13 +98,13 @@ class Traffic_Env(object):
         self.state_dim = state_dim
         self.num_agent = num_agent
 
-        self.CityFlow = cityflow.Engine(config_path, thread_num=1)
+        self.CityFlow = cityflow.Engine(config_file, thread_num=16)
     def step(self, action_list):
         pass
         return False
 
     def reset(self):
-        pass
+        self.CityFlow.reset(seed=True)
 
     def get_obs(self):
         pass

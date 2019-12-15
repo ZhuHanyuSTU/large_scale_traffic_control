@@ -240,9 +240,12 @@ if __name__ == '__main__':
         episode_reward = 0
         pre_update_step = 0
         update_tar_flag = False
-        Env = Traffic_Env(obs_dim, action_dim, state_dim, n_agents)  #lack of input
+        # create traffic environment
+        Env = Traffic_Env(obs_dim, action_dim, state_dim, n_agents)
+        # reset traffic environment
         Env.reset()
-        env_state = Env.get_state()  # state of whole environment
+        # get state of whole environment
+        env_state = Env.get_state()
         env_obs = Env.get_obs()  # observation of whole environment
         for step in range(step_p_epi):
             # +++++++++++++++++++++++Done in fog node++++++++++++++++++++++ #
@@ -251,7 +254,7 @@ if __name__ == '__main__':
                 # get observation of each agent
                 agent_obs = Env.get_agent_obs(agent_idx)  # (format is not determined)
                 # make decision for each agent
-                exec('agent_q_value = Fog_Agents_' + str(Agent_id_list[i]) + '.forward(th.FloatTensor(agent_obs).unsqueeze(0).to(device)).detach().cpu().numpy()[0]')
+                exec('agent_q_value = Fog_Agents_' + str(Agent_id_list[agent_idx]) + '.forward(th.FloatTensor(agent_obs).unsqueeze(0).to(device)).detach().cpu().numpy()[0]')
                 sel_act = select_action(agent_q_value, epsilon, test_mode=test_flag)
                 action_list.append(sel_act.tolist())
             # ++++++++++++execution in fog node, receive++++++++++++++++++++++ #
@@ -272,6 +275,10 @@ if __name__ == '__main__':
                     pre_update_step = step
                 update_qmix(transition_batch, update_tar=update_tar_flag)
                 update_tar_flag = False
+                for i in range(n_agents):
+                    exec('for Fog_param, cloud_param in zip(Fog_Agents_' + str(Agent_id_list[i]) + '.parameters(), qmixer.Agents_' + str(Agent_id_list[i]) + '.parameters()): Fog_param.data.copy_(cloud_param)')
+
+
             env_state = env_next_state
             env_obs = env_next_obs
             episode_reward += env_reward
